@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
+#include <strings.h>
+
 
 char *log_filename = "logfile.log";
 char *prog_name;
@@ -17,6 +19,14 @@ static int max_seconds = MAXSECONDS;
 int sid = -1;
 int qid = -1;
 static struct shmem *shm = NULL;
+
+//define bmap to map to an index with empty process
+static unsigned char bmap[processSize/8];
+
+//high-priority queue, low-priority queue, and blocked queue
+static struct queue pq[qCOUNT];
+
+
 
 static void helpMenu(){
 	printf("Menu\n");
@@ -114,12 +124,22 @@ int main(int argc, char** argv){
 	prog_name = argv[0];
 	
 	signal(SIGINT, signalHandler);
+	signal(SIGALRM, signalHandler);
 
 	srand(getpid());
+
 	if((parseOpt(argc, argv) < 0) || (createSHM() < 0)){
 		return EXIT_FAILURE;
 	}
-	deallocateSHM();		
+	
+	//clear shared memory, bitmap, and queues
+	bzero(shm, sizeof(struct shmem));
+	bzero(bmap, sizeof(bmap));
+	bzero(pq, sizeof(struct queue)*qCOUNT);
+	
+	alarm(max_seconds);
+	atexit(deallocateSHM);		
+	
 	return EXIT_SUCCESS;	
 
 }
