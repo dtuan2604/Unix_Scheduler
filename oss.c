@@ -189,6 +189,23 @@ static int getFreeBmap(){
   	}
   	return -1;
 }
+static int pushQ(const int qid, const int bit){
+	struct queue *q = &pq[qid];
+  	q->ids[q->len++] = bit;
+  	return qid;
+
+}
+static int popQ(struct queue *pq, const int pos){
+	unsigned int i;
+  	unsigned int u = pq->ids[pos];
+	
+	//Pop the items and then shift the rest to the left
+  	for (i = pos; i < pq->len - 1; i++){
+    		pq->ids[i] = pq->ids[i + 1];
+  	}
+  	return u;
+
+}
 static int startUserPCB(){
 	char buf[10];
 	const int u = getFreeBmap();
@@ -210,20 +227,24 @@ static int startUserPCB(){
 			break;
 		case 0: 
 			snprintf(buf, sizeof(buf), "%d", io_bound);
-			//execl
-
+			execl("./user", "./user", buf, NULL);
+			fprintf(stderr,"%s: failed to execl.",prog_name);
+                        perror("Error");			
 			exit(EXIT_FAILURE);
 			break;
 		default:
 			++usersStarted;
-
+			if(io_bound == 1)
+				usr->priority = qHIGH;
+			else
+				usr->priority = qLOW;
 			usr->id = next_id++;
 			usr->pid = pid;
 
 			usr->t_started = shm->clock; //save started time to record system time
 			usr->state = sREADY; //mark process as ready
 			
-			//pushQ: push to ready queue
+			pushQ(qREADY, u); 
 			
 			++logLine;
 			printf("OSS: Generating process with PID %u and putting it in queue %d at time %lu:%lu\n",
@@ -245,14 +266,34 @@ static void advanceTimer(){
 			
     		addTime(&next_start, &shm->clock);
 		if (usersStarted < USERS_MAX){
-      			//startUserPCB();
+      			startUserPCB();
     		}
   	}
+}
+static void unblockUsers(){
+	unsigned int i;
+  	for (i = 0; i < pq[qBLOCKED].len; ++i){
+		//get first block index
+		const int u = pq[qBLOCKED].ids[i];
+		struct userPCB *usr = &shm->users[u];
+
+		//check if it is time to unblock
+		if ((usr->t_blocked.tv_sec < shm->clock.tv_sec) ||
+        		((usr->t_blocked.tv_sec == shm->clock.tv_sec) &&
+         		(usr->t_blocked.tv_nsec <= shm->clock.tv_nsec))){
+			//mark user states as ready
+			usr->state = sREADY;
+      			usr->t_blocked.tv_sec = 0;
+      			usr->t_blocked.tv_nsec = 0;
+
+		}
+	
+	}
 }
 static void ossSchedule(){
 	while(usersTerminated < USERS_MAX){
 		advanceTimer();
-		//unblock user before scheduling
+		//unblockUsers(); //still working on
 		//schedule users
 		//check output log
 	}
