@@ -5,7 +5,7 @@
 #define processSize 18
 #define TIMESLICE 10000000
 //define key for shared memory
-const key_t key_shmem = 2604;
+const key_t key_shmem = 2704;
 const key_t key_queue = 1708;
 
 //define states for process
