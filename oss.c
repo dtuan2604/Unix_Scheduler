@@ -42,7 +42,8 @@ static struct timespec schedulerTurnTime = {.tv_sec = 0, .tv_nsec = 0};
 static struct timespec schedulerWaitTime = {.tv_sec = 0, .tv_nsec = 0};
 static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
 
-
+//set a variable to hold current ready queues
+int qREADY = qHIGH; //initialize current ready queue as high-priority queue
 
 static void helpMenu(){
 	printf("Menu\n");
@@ -161,7 +162,78 @@ static void divTime(struct timespec *a, const int d){
   	a->tv_sec /= d;
   	a->tv_nsec /= d;
 }
+static int checkBmap(const int byte, const int n){
+  	//check a bit in byte
+	return (byte & (1 << n)) >> n;
+}
+static void toggleBmap(const int u){
+  	//mark the bitmap as used
+	int byte = u / 8;
+  	int mask = 1 << (u % 8);
 
+  	bmap[byte] ^= mask;
+}
+static int getFreeBmap(){
+	//get a free bit from bitmap
+	int i;
+
+  	for (i = 0; i < processSize; ++i){
+
+    		int byte = i / 8;
+    		int bit = i % 8;
+
+    		if (checkBmap(bmap[byte], bit) == 0){
+      			toggleBmap(i);
+      			return i;
+    		}
+  	}
+  	return -1;
+}
+static int startUserPCB(){
+	char buf[10];
+	const int u = getFreeBmap();
+	
+	if(u == -1)
+		return EXIT_SUCCESS;
+	struct userPCB *usr = &shm->users[u]; //allocate process control block for user process
+
+	//generate random to determine if the user process is IO bound or CPU bound
+	const int io_bound = ((rand() % 100) <= IO_BOUND_PROB) ? 1 : 0;
+
+	const pid_t pid = fork();
+
+	switch(pid){
+		case -1:
+			fprintf(stderr,"%s: failed to fork a process.",prog_name);
+                        perror("Error");
+			return EXIT_FAILURE;
+			break;
+		case 0: 
+			snprintf(buf, sizeof(buf), "%d", io_bound);
+			//execl
+
+			exit(EXIT_FAILURE);
+			break;
+		default:
+			++usersStarted;
+
+			usr->id = next_id++;
+			usr->pid = pid;
+
+			usr->t_started = shm->clock; //save started time to record system time
+			usr->state = sREADY; //mark process as ready
+			
+			//pushQ: push to ready queue
+			
+			++logLine;
+			printf("OSS: Generating process with PID %u and putting it in queue %d at time %lu:%lu\n",
+           			usr->id, qREADY, shm->clock.tv_sec, shm->clock.tv_nsec);		
+			break;	
+	}
+	
+	return EXIT_SUCCESS;
+
+}
 static void advanceTimer(){
 	struct timespec t = {.tv_sec = 1, .tv_nsec = 0}; //amount to update
 	addTime(&shm->clock, &t);

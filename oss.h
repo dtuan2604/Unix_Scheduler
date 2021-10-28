@@ -6,7 +6,7 @@
 #define TIMESLICE 10000000
 #define USERS_MAX 50
 #define LOG_LINES 10000
-
+#define IO_BOUND_PROB 30
 
 //define key for shared memory
 const key_t key_shmem = 2704;
