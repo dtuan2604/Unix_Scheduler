@@ -4,6 +4,10 @@
 #define MAXSECONDS 3
 #define processSize 18
 #define TIMESLICE 10000000
+#define USERS_MAX 50
+#define LOG_LINES 10000
+
+
 //define key for shared memory
 const key_t key_shmem = 2704;
 const key_t key_queue = 1708;
@@ -46,6 +50,7 @@ struct queue{
 //define process control block
 struct userPCB{
 	pid_t pid;
+	int priority;
 	unsigned int id;
 	enum state state;
 
