@@ -17,8 +17,8 @@ static int max_seconds = MAXSECONDS;
 static unsigned int next_id = 1;
 
 //shared memory id and pointer
-int sid = -1;
-int qid = -1;
+static int sid = -1;
+static int qid = -1;
 static struct shmem *shm = NULL;
 
 //define bmap to map to an index with empty process
