@@ -49,7 +49,53 @@ static int deallocateSHM(){
 }
 
 static void userProcess(const int IObound){
+	int alive = 1;
+	const int io_block_prob = (IObound) ? IO_IO_BLOCK_PROB : CPU_IO_BLOCK_PROB;
+	
+	while(alive){
+		struct ossMsg m;
+		
+		m.from = getpid();
+		if (msgrcv(qid, (void *)&m, MESSAGE_SIZE, m.from, 0) == -1){
+			fprintf(stderr,"%s: failed to receive message. ",prog_name);
+                	perror("Error");
+			break;
+		}
 
+		const int timeslice = m.timeslice;
+		if(timeslice == 0){
+			break; // if it has use up its time slice, then exit
+		}
+		
+		bzero(&m, sizeof(struct ossMsg));
+
+		const int willTerminate = ((rand() % 100) <= TERM_PROB) ? 1 : 0;	
+		if (willTerminate) // terminated successfully
+		{
+			m.timeslice = sTERMINATED;
+			m.clock.tv_nsec = rand() % timeslice;
+			alive = 0;
+		}else{
+			const int will_interrupt = ((rand() % 100) < io_block_prob) ? 1 : 0;
+			if (will_interrupt){
+				m.timeslice = sBLOCKED;
+				m.clock.tv_nsec = rand() % timeslice;
+				m.io.tv_sec = rand() % EVENT_R;
+				m.io.tv_nsec = rand() % EVENT_S;
+			}else{
+				m.timeslice = sREADY;
+				m.clock.tv_nsec = timeslice;
+			}
+		}
+
+		m.type = getppid();
+		m.from = getpid();
+		if (msgsnd(qid, (void *)&m, MESSAGE_SIZE, 0) == -1){
+			fprintf(stderr,"%s: failed to send message. ",prog_name);
+                        perror("Error");
+			break;
+		}
+	}
 }
 
 int main(int argc, char** argv){
