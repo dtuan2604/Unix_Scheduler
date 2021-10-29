@@ -97,7 +97,10 @@ static void userProcess(const int IObound){
 		}
 	}
 }
-
+static void signalHandler(){
+	deallocateSHM();
+	exit(1);
+}
 int main(int argc, char** argv){
 	prog_name = argv[0];
 	if (argc != 2)
@@ -106,6 +109,8 @@ int main(int argc, char** argv){
 		return EXIT_FAILURE;
 	}
 	
+	signal(SIGINT, signalHandler);
+		
 	const int IObound = atoi(argv[1]);
 	srand(getpid() + IObound); //seeding off
 	
