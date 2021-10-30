@@ -321,12 +321,180 @@ static void unblockUsers(){
 	
 	}
 }
+static void stopUserProcess(){
+	struct ossMsg m;
 
+	int i;
+	for (i = 0; i < processSize; i++){
+		if (shm->users[i].pid > 0){
+      			m.timeslice = 0;
+      			m.mtype = shm->users[i].pid;
+      			m.from = getpid();
+      			if (msgsnd(qid, (void *)&m, MESSAGE_SIZE, 0) == -1){
+        			break;
+      			}
+			
+			waitpid(shm->users[i].pid, NULL, 0); //wait for the process to exit
+      			shm->users[i].pid = 0;
+		}
+	}
+
+}
+static void clearUserPCB(const int u){
+	struct timespec res;
+  	struct userPCB *usr = &shm->users[u];
+
+  	++usersTerminated;
+
+	//get the system time
+	subTime(&usr->t_started, &shm->clock, &usr->t_sys);
+	//***Another function here to add to OSSReport
+
+	//get wait time
+	subTime(&usr->t_cpu, &usr->t_sys, &res);
+	//***Another function here to add to OSSReport
+	
+
+	bzero(usr, sizeof(struct userPCB)); //Clear all data
+	usr->state = sNEW;
+	toggleBmap(u); //mark the usr as free
+}
+static int scheduleRunUser(){
+	struct ossMsg m;
+	
+	//qREADY is currently assigned to either qLOW or qHIGH from this function's parent
+	const int u = popQ(&pq[qREADY], 0);
+	pq[qREADY].len--;
+
+	struct userPCB *usr = &shm->users[u];
+	bzero(&m, sizeof(struct ossMsg));
+	
+	++logLine;
+  	printf("OSS: Dispatching process with PID %u from queue %d at time %lu:%lu\n", usr->id, qREADY, shm->clock.tv_sec, shm->clock.tv_nsec);
+	
+	//Evaluate if the popped queue is either high or low priority
+	const int TIMESLICE = ((qREADY == qHIGH) ? H_TIMESLICE : L_TIMESLICE);
+	m.timeslice = TIMESLICE;
+  	m.mtype = usr->pid;
+  	m.from = getpid();
+
+	//Send message to the queue
+	if ((msgsnd(qid, (void *)&m, MESSAGE_SIZE, 0) == -1) ||
+      		(msgrcv(qid, (void *)&m, MESSAGE_SIZE, getpid(), 0) == -1)){
+    		fprintf(stderr,"%s: Couldn't send and receive message. ",prog_name);
+		perror("Error");
+    		return -1;
+  	}
+	
+	const int new_state = m.timeslice;
+	//****Wait for professor's response
+	switch (new_state){
+		case sREADY:
+			usr->state = sREADY;
+			
+			//Getting burst time
+			usr->t_burst.tv_sec = 0;
+    			usr->t_burst.tv_nsec = m.clock.tv_nsec;
+
+			//add burst time
+			addTime(&shm->clock, &usr->t_burst); 
+			
+			//update how long user ran on cpu
+			addTime(&usr->t_cpu, &usr->t_burst);
+			
+			//update cpu time in the ossReport
+			addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+
+			++logLine;
+    			printf("OSS: Receiving that process with PID %u ran for %lu nanoseconds\n", usr->id, usr->t_burst.tv_nsec);
+    			if (m.clock.tv_nsec != TIMESLICE){
+      				++logLine;
+      				printf("OSS: not using its entire quantum\n");
+    			}
+			++logLine;
+    			printf("OSS: Putting process with PID %u into end of queue %d\n", usr->id, usr->priority);
+    			pushQ(usr->priority, u);
+			break;
+		case sBLOCKED:
+    			usr->state = sBLOCKED;
+			
+			usr->t_burst.tv_sec = 0;
+    			usr->t_burst.tv_nsec = m.clock.tv_nsec;
+			
+			addTime(&shm->clock, &usr->t_burst);
+			addTime(&usr->t_cpu, &usr->t_burst);
+			addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+	}
+	
+	
+}
+static int runChildProcess(){
+	static struct timespec t_idle = {.tv_sec = 0, .tv_nsec = 0};
+	static struct timespec diff_idle;
+	static int flag = 0;
+  	struct timespec start, end, diff;
+	
+	//if there isn't any ready queue in the high-priority queue
+	if(flag == 0){
+		if(pq[qHIGH].len == 0){
+			++logLine;
+      			printf("OSS: No ready process in queue %d at %li:%li\n", qHIGH, shm->clock.tv_sec, shm->clock.tv_nsec);
+			++flag;
+			t_idle = shm->clock;
+			return 0;
+		}
+		qREADY = qHIGH;
+		t_idle.tv_sec = 0;
+    		t_idle.tv_nsec = 0;
+	}else if(flag == 1){
+		subTime(&t_idle, &shm->clock, &diff_idle);
+                addTime(&cpuIdleTime, &diff_idle);
+
+		if(pq[qLOW].len == 0){
+                        ++logLine;
+                        printf("OSS: No ready process in queue %d at %li:%li\n", qLOW, shm->clock.tv_sec, shm->clock.tv_nsec);
+                        ++flag;
+			t_idle = shm->clock;
+                        return 0;
+                }
+		flag = 0;
+		qREADY = qLOW;
+                t_idle.tv_sec = 0;
+                t_idle.tv_nsec = 0;
+			
+	}else{
+		subTime(&t_idle, &shm->clock, &diff_idle);
+                addTime(&cpuIdleTime, &diff_idle);
+
+		if(pq[qBLOCKED].len == 0){
+			++logLine;
+                        printf("OSS: No blocked process in queue %d at %li:%li\n", qBLOCKED, shm->clock.tv_sec, shm->clock.tv_nsec);
+			++logLine;
+			printf("OSS: The operating system will terminate right away\n");
+			return -1; //return 1 to let OSS know there isn't any more process to schedule
+		}else{
+			flag = 0;
+			t_idle.tv_sec = 0;
+	                t_idle.tv_nsec = 0;
+			return 0;
+		}
+	}
+	//***NEED TO CHECK***
+	start = shm->clock;
+	scheduleRunUser();
+	end = shm->clock;
+	
+	subTime(&start, &end, &diff); 
+	//***Another function here
+	
+	return 1;
+}
 static void ossSchedule(){
 	while(usersTerminated < USERS_MAX){
 		advanceTimer();
 		unblockUsers();
-		//schedule users
+		if(runChildProcess() == -1) //there isn't any more processes to schedule
+			break;
 		//check output log
 	}
 	
