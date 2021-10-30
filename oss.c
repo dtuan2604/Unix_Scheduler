@@ -30,7 +30,7 @@ static struct queue pq[qCOUNT];
 //keep track of the number of users running
 static unsigned int usersStarted = 0;
 static unsigned int usersTerminated = 0;
-static unsigned int usersBlocked = 0;
+//static unsigned int usersBlocked = 0;
 
 //keep track of the number of log line
 static unsigned int logLine = 0;
@@ -38,12 +38,13 @@ static unsigned int logLine = 0;
 //define time struct needed in this project
 static const struct timespec maxTimeBetweenNewProcs = {.tv_sec = 1, .tv_nsec = 1};
 static struct timespec next_start = {.tv_sec = 0, .tv_nsec = 0};
-static struct timespec schedulerTurnTime = {.tv_sec = 0, .tv_nsec = 0};
-static struct timespec schedulerWaitTime = {.tv_sec = 0, .tv_nsec = 0};
-static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
+//static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
 
 //set a variable to hold current ready queues
 int qREADY = qHIGH; //initialize current ready queue as high-priority queue
+
+//create an array of ossReport
+static struct ossReport pReport[qCOUNT - 1];
 
 static void helpMenu(){
 	printf("Menu\n");
@@ -86,6 +87,20 @@ static int parseOpt(int argc,char** argv){
 		return -1;
 	}
 	return 0;
+}
+static void initOssReport(){
+	int i;
+	for(i = 0; i < qCOUNT - 1; i++){
+		pReport[i].t_wait.tv_sec = 0;
+		pReport[i].t_wait.tv_nsec = 0;
+                pReport[i].t_cpu.tv_sec = 0;
+                pReport[i].t_cpu.tv_nsec = 0;
+                pReport[i].t_sys.tv_sec = 0;
+                pReport[i].t_sys.tv_nsec = 0;
+                pReport[i].t_blocked.tv_sec = 0;
+                pReport[i].t_blocked.tv_nsec = 0;
+
+	}
 }
 static int createSHM(){
 	sid = shmget(key_shmem, sizeof(struct shmem), IPC_CREAT | IPC_EXCL | S_IRWXU);
@@ -148,6 +163,7 @@ static void addTime(struct timespec *a, const struct timespec *b){
     		a->tv_nsec -= max_ns;
   	}
 }
+/*
 static void subTime(struct timespec *a, struct timespec *b, struct timespec *c){
   	//function to find time difference 
 	if (b->tv_nsec < a->tv_nsec){
@@ -158,10 +174,12 @@ static void subTime(struct timespec *a, struct timespec *b, struct timespec *c){
     		c->tv_nsec = b->tv_nsec - a->tv_nsec;
   	}
 }
+
 static void divTime(struct timespec *a, const int d){
   	a->tv_sec /= d;
   	a->tv_nsec /= d;
 }
+*/
 static int checkBmap(const int byte, const int n){
   	//check a bit in byte
 	return (byte & (1 << n)) >> n;
@@ -195,6 +213,7 @@ static int pushQ(const int qid, const int bit){
   	return qid;
 
 }
+/*
 static int popQ(struct queue *pq, const int pos){
 	unsigned int i;
   	unsigned int u = pq->ids[pos];
@@ -206,6 +225,7 @@ static int popQ(struct queue *pq, const int pos){
   	return u;
 
 }
+*/
 static int startUserPCB(){
 	char buf[10];
 	const int u = getFreeBmap();
@@ -270,6 +290,7 @@ static void advanceTimer(){
     		}
   	}
 }
+/*
 static void unblockUsers(){
 	unsigned int i;
   	for (i = 0; i < pq[qBLOCKED].len; ++i){
@@ -290,6 +311,7 @@ static void unblockUsers(){
 	
 	}
 }
+*/
 static void ossSchedule(){
 	while(usersTerminated < USERS_MAX){
 		advanceTimer();
@@ -319,6 +341,7 @@ int main(int argc, char** argv){
 	alarm(max_seconds);
 	atexit(deallocateSHM);		
 	
+	initOssReport();	
 	ossSchedule();
 		
 	return EXIT_SUCCESS;	

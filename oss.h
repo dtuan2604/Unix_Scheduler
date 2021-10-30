@@ -3,9 +3,13 @@
 
 #define MAXSECONDS 3
 #define processSize 18
-#define TIMESLICE 10000000
+
+#define H_TIMESLICE 1000000
+#define L_TIMESLICE 10000000
+
 #define USERS_MAX 50
 #define LOG_LINES 10000
+
 #define IO_BOUND_PROB 30
 
 //define key for shared memory
@@ -66,5 +70,14 @@ struct shmem{
 	struct timespec clock;
 	struct userPCB users[processSize];
 };
+
+//define oss report
+struct ossReport{
+	struct timespec t_wait;
+	struct timespec t_sys;
+	struct timespec t_cpu;
+	struct timespec t_blocked;
+}; 
+
 
 #endif

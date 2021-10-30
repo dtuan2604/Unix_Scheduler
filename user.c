@@ -7,7 +7,8 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-
+#include <strings.h>
+#include <signal.h>
 
 static int sid = -1;
 static int qid = -1;
@@ -88,7 +89,7 @@ static void userProcess(const int IObound){
 			}
 		}
 
-		m.type = getppid();
+		m.mtype = getppid();
 		m.from = getpid();
 		if (msgsnd(qid, (void *)&m, MESSAGE_SIZE, 0) == -1){
 			fprintf(stderr,"%s: failed to send message. ",prog_name);
