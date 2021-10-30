@@ -30,7 +30,6 @@ static struct queue pq[qCOUNT];
 //keep track of the number of users running
 static unsigned int usersStarted = 0;
 static unsigned int usersTerminated = 0;
-//static unsigned int usersBlocked = 0;
 
 //keep track of the number of log line
 static unsigned int logLine = 0;
@@ -38,10 +37,10 @@ static unsigned int logLine = 0;
 //define time struct needed in this project
 static const struct timespec maxTimeBetweenNewProcs = {.tv_sec = 1, .tv_nsec = 1};
 static struct timespec next_start = {.tv_sec = 0, .tv_nsec = 0};
-//static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
+static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
 
 //set a variable to hold current ready queues
-int qREADY = qHIGH; //initialize current ready queue as high-priority queue
+static int qREADY = qHIGH; //initialize current ready queue as high-priority queue
 
 //create an array of ossReport
 static struct ossReport pReport[qCOUNT - 1];
@@ -163,7 +162,7 @@ static void addTime(struct timespec *a, const struct timespec *b){
     		a->tv_nsec -= max_ns;
   	}
 }
-/*
+
 static void subTime(struct timespec *a, struct timespec *b, struct timespec *c){
   	//function to find time difference 
 	if (b->tv_nsec < a->tv_nsec){
@@ -179,7 +178,7 @@ static void divTime(struct timespec *a, const int d){
   	a->tv_sec /= d;
   	a->tv_nsec /= d;
 }
-*/
+
 static int checkBmap(const int byte, const int n){
   	//check a bit in byte
 	return (byte & (1 << n)) >> n;
@@ -213,7 +212,7 @@ static int pushQ(const int qid, const int bit){
   	return qid;
 
 }
-/*
+
 static int popQ(struct queue *pq, const int pos){
 	unsigned int i;
   	unsigned int u = pq->ids[pos];
@@ -225,7 +224,7 @@ static int popQ(struct queue *pq, const int pos){
   	return u;
 
 }
-*/
+
 static int startUserPCB(){
 	char buf[10];
 	const int u = getFreeBmap();
@@ -254,10 +253,12 @@ static int startUserPCB(){
 			break;
 		default:
 			++usersStarted;
-			if(io_bound == 1)
+			if(io_bound == 1){
 				usr->priority = qHIGH;
-			else
+			}else{
 				usr->priority = qLOW;
+			}
+		
 			usr->id = next_id++;
 			usr->pid = pid;
 
@@ -290,7 +291,7 @@ static void advanceTimer(){
     		}
   	}
 }
-/*
+
 static void unblockUsers(){
 	unsigned int i;
   	for (i = 0; i < pq[qBLOCKED].len; ++i){
@@ -306,16 +307,25 @@ static void unblockUsers(){
 			usr->state = sREADY;
       			usr->t_blocked.tv_sec = 0;
       			usr->t_blocked.tv_nsec = 0;
+			
+			++logLine;
+			printf("OSS: Unblocked PID %d at %lu:%lu\n", usr->id, shm->clock.tv_sec, shm->clock.tv_nsec);
 
+			//pop from blocked queue
+			popQ(&pq[qBLOCKED], i);
+		        pq[qBLOCKED].len--;
+		
+			//push at the end of its ready queue
+			pushQ(usr->priority, u);
 		}
 	
 	}
 }
-*/
+
 static void ossSchedule(){
 	while(usersTerminated < USERS_MAX){
 		advanceTimer();
-		//unblockUsers(); //still working on
+		unblockUsers();
 		//schedule users
 		//check output log
 	}
