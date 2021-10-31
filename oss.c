@@ -8,7 +8,7 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 #include <strings.h>
-
+#include <signal.h>
 
 char *log_filename = "logfile.log";
 char *prog_name;
@@ -146,10 +146,6 @@ static void deallocateSHM(){
 		}	
 	}
 }
-static void signalHandler(int sig){
-	printf("Signal Handler are triggered\n");
-	exit(1);
-}
 static void addTime(struct timespec *a, const struct timespec *b){
 	//function to add time to the clock	
 	static const unsigned int max_ns = 1000000000;
@@ -172,11 +168,6 @@ static void subTime(struct timespec *a, struct timespec *b, struct timespec *c){
     		c->tv_sec = b->tv_sec - a->tv_sec;
     		c->tv_nsec = b->tv_nsec - a->tv_nsec;
   	}
-}
-
-static void divTime(struct timespec *a, const int d){
-  	a->tv_sec /= d;
-  	a->tv_nsec /= d;
 }
 
 static int checkBmap(const int byte, const int n){
@@ -354,6 +345,7 @@ static void clearUserPCB(const int u){
 	subTime(&usr->t_cpu, &usr->t_sys, &res);
 	//***Another function here to add to OSSReport
 	
+	//***Might be another function to add Blocked time	
 
 	bzero(usr, sizeof(struct userPCB)); //Clear all data
 	usr->state = sNEW;
@@ -403,7 +395,7 @@ static int scheduleRunUser(){
 			addTime(&usr->t_cpu, &usr->t_burst);
 			
 			//update cpu time in the ossReport
-			addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+			//****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
 
 			++logLine;
     			printf("OSS: Receiving that process with PID %u ran for %lu nanoseconds\n", usr->id, usr->t_burst.tv_nsec);
@@ -419,12 +411,49 @@ static int scheduleRunUser(){
     			usr->state = sBLOCKED;
 			
 			usr->t_burst.tv_sec = 0;
-    			usr->t_burst.tv_nsec = m.clock.tv_nsec;
-			
+    			usr->t_burst.tv_nsec = m.clock.tv_nsec;			
 			addTime(&shm->clock, &usr->t_burst);
 			addTime(&usr->t_cpu, &usr->t_burst);
-			addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+			//Update cpu time in the OSSReport
+			//*****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+
+			//Get blocked time from the message from the child process
+			usr->t_blocked.tv_sec = m.io.tv_sec;
+    			usr->t_blocked.tv_nsec = m.io.tv_nsec;
+			
+			//***IMPORTANT: Implement a function here to add blocked time
+
+			addTime(&usr->t_blocked, &shm->clock); //add clock to wait time
+
+    			++logLine;
+    			printf("OSS: Receiving that process with PID %u is blocking for event(%li:%li) %li:%li\n",
+           			usr->id, usr->t_blocked.tv_sec, usr->t_blocked.tv_nsec, shm->clock.tv_sec, shm->clock.tv_nsec);
+			
+			//insert to blocked queue
+			++logLine;
+    			printf("OSS: Putting process with PID %u into queue %d\n", usr->id, qBLOCKED);
+    			pushQ(qBLOCKED, u);
+    			break;	
+		case sTERMINATED:
+			usr->state = sTERMINATED;
+    			
+			usr->t_burst.tv_sec = 0;
+    			usr->t_burst.tv_nsec = m.clock.tv_nsec;
+			addTime(&shm->clock, &usr->t_burst);
+			addTime(&usr->t_cpu, &usr->t_burst); //add burst to total cpu time
+			
+			//Update CPU time in the OSSReport
+			//*****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
+			++logLine;
+    			printf("OSS: Receiving that process with PID %u has terminated\n", usr->id);
+			
+			clearUserPCB(u);
+			break;
+		default:
+			printf("OSS: Invalid response from user\n");
+    			break;
 	}
+	return 0;
 	
 	
 }
@@ -434,8 +463,8 @@ static int runChildProcess(){
 	static int flag = 0;
   	struct timespec start, end, diff;
 	
-	//if there isn't any ready queue in the high-priority queue
 	if(flag == 0){
+		//if there isn't any ready queue in the high-priority queue
 		if(pq[qHIGH].len == 0){
 			++logLine;
       			printf("OSS: No ready process in queue %d at %li:%li\n", qHIGH, shm->clock.tv_sec, shm->clock.tv_nsec);
@@ -447,9 +476,11 @@ static int runChildProcess(){
 		t_idle.tv_sec = 0;
     		t_idle.tv_nsec = 0;
 	}else if(flag == 1){
+		//add idle time when cpu check empty high-priority queue
 		subTime(&t_idle, &shm->clock, &diff_idle);
                 addTime(&cpuIdleTime, &diff_idle);
 
+		//if there isn't any ready queue in the low-priority queue
 		if(pq[qLOW].len == 0){
                         ++logLine;
                         printf("OSS: No ready process in queue %d at %li:%li\n", qLOW, shm->clock.tv_sec, shm->clock.tv_nsec);
@@ -463,6 +494,7 @@ static int runChildProcess(){
                 t_idle.tv_nsec = 0;
 			
 	}else{
+		//add idle time when cpu check empty low-priority queue
 		subTime(&t_idle, &shm->clock, &diff_idle);
                 addTime(&cpuIdleTime, &diff_idle);
 
@@ -484,10 +516,18 @@ static int runChildProcess(){
 	scheduleRunUser();
 	end = shm->clock;
 	
+	//how long the process runs
 	subTime(&start, &end, &diff); 
-	//***Another function here
 	
-	return 1;
+	++logLine;
+  	printf("OSS: total time this schedule was %lu nanoseconds\n", diff.tv_nsec);
+	return 0;
+}
+static void checkLog(){
+	if(logLine >= LOG_LINES){
+		printf("OSS: Current log has exceed %d lines (%d lines), the system will terminate now\n",LOG_LINES, logLine);
+		raise(SIGINT);
+	}
 }
 static void ossSchedule(){
 	while(usersTerminated < USERS_MAX){
@@ -495,9 +535,20 @@ static void ossSchedule(){
 		unblockUsers();
 		if(runChildProcess() == -1) //there isn't any more processes to schedule
 			break;
-		//check output log
+		checkLog();
 	}
 	
+}
+static void cleanupOSS(){
+	stopUserProcess();
+//	deallocateSHM();
+	exit(EXIT_SUCCESS);	
+}
+static void signalHandler(int sig){
+        printf("OSS: Signaled with %d %li:%li\n", sig, shm->clock.tv_sec, shm->clock.tv_nsec);
+        //Print result
+     	cleanupOSS();
+	exit(1);
 }
 int main(int argc, char** argv){
 	prog_name = argv[0];
@@ -521,7 +572,10 @@ int main(int argc, char** argv){
 	
 	initOssReport();	
 	ossSchedule();
-		
+	
+	//Print Resul
+	cleanupOSS();
+			
 	return EXIT_SUCCESS;	
 
 }
