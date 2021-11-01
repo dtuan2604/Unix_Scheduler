@@ -6,7 +6,7 @@
 
 #define H_TIMESLICE 1000000
 #define L_TIMESLICE 10000000
-
+#define MAXDISPATCH 10000 // Maximum dispatch time
 #define USERS_MAX 50
 #define LOG_LINES 10000
 
