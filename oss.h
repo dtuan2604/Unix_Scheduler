@@ -73,10 +73,15 @@ struct shmem{
 
 //define oss report
 struct ossReport{
+	unsigned int usersStarted;
+	unsigned int usersTerminated;
+	int c_highprior;
+	int c_lowprior;
 	struct timespec t_wait;
 	struct timespec t_sys;
 	struct timespec t_cpu;
-	struct timespec t_blocked;
+	struct timespec t_blocked[qCOUNT - 1];
+	struct timespec cpuIdleTime;
 }; 
 
 

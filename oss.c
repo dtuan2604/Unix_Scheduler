@@ -27,26 +27,26 @@ static unsigned char bmap[processSize/8];
 //high-priority queue, low-priority queue, and blocked queue
 static struct queue pq[qCOUNT];
 
-//keep track of the number of users running
-static unsigned int usersStarted = 0;
-static unsigned int usersTerminated = 0;
-
 //keep track of the number of log line
 static unsigned int logLine = 0;
 
 //define time struct needed in this project
 static const struct timespec maxTimeBetweenNewProcs = {.tv_sec = 2, .tv_nsec = 1000000000};
 static struct timespec next_start = {.tv_sec = 0, .tv_nsec = 0};
-static struct timespec cpuIdleTime = {.tv_sec = 0, .tv_nsec = 0};
 
 //set a variable to hold current ready queues
 static int qREADY = qHIGH; //initialize current ready queue as high-priority queue
 
 //create an array of ossReport
-static struct ossReport pReport[qCOUNT - 1];
+static struct ossReport pReport;
 
 static void helpMenu(){
-	printf("Menu\n");
+	printf("This program is trying to stimulate an Operating System scheduler.\n");
+	printf("The program will fork many children processes until it reachs to maximum\n");
+	printf("number defined in the header file. Meanwhile, it also allocates time to\n");
+	printf("try to put a process in ready queu, dispatch it, put it back or blocked it.\n");
+	printf("Additionally, this program also stimulate a clock so that we could check\n");
+	printf("our scheduler is working correctly or not.\n");
 }
 
 static int parseOpt(int argc,char** argv){
@@ -60,11 +60,9 @@ static int parseOpt(int argc,char** argv){
      		 		return -1;
     			case 's':
  	     			max_seconds = atoi(optarg);
-      				printf("Max seconds is %d\n",max_seconds);
 				break;
     			case 'l':
       				log_filename = optarg;
-      				printf("Log file is %s\n",log_filename);
 				break;
 			case '?':
                                 if(optopt == 's' || optopt == 'l')
@@ -88,18 +86,23 @@ static int parseOpt(int argc,char** argv){
 	return 0;
 }
 static void initOssReport(){
-	int i;
-	for(i = 0; i < qCOUNT - 1; i++){
-		pReport[i].t_wait.tv_sec = 0;
-		pReport[i].t_wait.tv_nsec = 0;
-                pReport[i].t_cpu.tv_sec = 0;
-                pReport[i].t_cpu.tv_nsec = 0;
-                pReport[i].t_sys.tv_sec = 0;
-                pReport[i].t_sys.tv_nsec = 0;
-                pReport[i].t_blocked.tv_sec = 0;
-                pReport[i].t_blocked.tv_nsec = 0;
+	pReport.c_highprior = 0;
+	pReport.c_lowprior = 0;
+	pReport.usersStarted = 0;
+	pReport.usersTerminated = 0;
+	pReport.t_wait.tv_sec = 0;
+	pReport.t_wait.tv_nsec = 0;
+        pReport.t_cpu.tv_sec = 0;
+        pReport.t_cpu.tv_nsec = 0;
+        pReport.t_sys.tv_sec = 0;
+        pReport.t_sys.tv_nsec = 0;
+	pReport.cpuIdleTime.tv_sec = 0;
+        pReport.cpuIdleTime.tv_nsec = 0;
+        pReport.t_blocked[qHIGH].tv_sec = 0;
+        pReport.t_blocked[qHIGH].tv_nsec = 0;
+	pReport.t_blocked[qLOW].tv_sec = 0;
+        pReport.t_blocked[qLOW].tv_nsec = 0;	
 
-	}
 }
 static int createSHM(){
 	sid = shmget(key_shmem, sizeof(struct shmem), IPC_CREAT | IPC_EXCL | S_IRWXU);
@@ -169,7 +172,10 @@ static void subTime(struct timespec *a, struct timespec *b, struct timespec *c){
     		c->tv_nsec = b->tv_nsec - a->tv_nsec;
   	}
 }
-
+static void divTime(struct timespec *a, const int d){
+  	a->tv_sec /= d;
+  	a->tv_nsec /= d;
+}
 static int checkBmap(const int byte, const int n){
   	//check a bit in byte
 	return (byte & (1 << n)) >> n;
@@ -242,11 +248,13 @@ static int startUserPCB(){
 			exit(EXIT_FAILURE);
 			break;
 		default:
-			++usersStarted;
+			++pReport.usersStarted;
 			if(io_bound == 1){
 				usr->priority = qHIGH;
+				pReport.c_highprior++;
 			}else{
 				usr->priority = qLOW;
+				pReport.c_lowprior++;
 			}		
 		
 			usr->id = next_id++;
@@ -267,19 +275,21 @@ static int startUserPCB(){
 
 }
 static void advanceTimer(){
-	struct timespec t = {.tv_sec = 0, .tv_nsec = 200000000}; //amount to update
+	struct timespec t = {.tv_sec = 0, .tv_nsec = 500000000}; //amount to update
 
-	if ((shm->clock.tv_sec >= next_start.tv_sec) ||((shm->clock.tv_sec == next_start.tv_sec) &&
-       		(shm->clock.tv_nsec >= next_start.tv_nsec))){
-    		next_start.tv_sec = rand() % maxTimeBetweenNewProcs.tv_sec;
-    		next_start.tv_nsec = rand() % maxTimeBetweenNewProcs.tv_nsec;
-			
-    		addTime(&next_start, &shm->clock);
-		if (usersStarted < USERS_MAX){
-      			startUserPCB();
-    		}
-  	}else{
+	if(pReport.usersStarted >= USERS_MAX)
 		addTime(&shm->clock, &t);
+	else{
+		if ((shm->clock.tv_sec >= next_start.tv_sec) ||((shm->clock.tv_sec == next_start.tv_sec) &&
+       			(shm->clock.tv_nsec >= next_start.tv_nsec))){
+    			next_start.tv_sec = rand() % maxTimeBetweenNewProcs.tv_sec;
+    			next_start.tv_nsec = rand() % maxTimeBetweenNewProcs.tv_nsec;
+			
+    			addTime(&next_start, &shm->clock);
+      			startUserPCB();
+  		}else{
+				addTime(&shm->clock, &t);
+		}
 	}
 }
 
@@ -335,16 +345,17 @@ static void clearUserPCB(const int u){
 	struct timespec res;
   	struct userPCB *usr = &shm->users[u];
 
-  	++usersTerminated;
+  	++pReport.usersTerminated;
+	//record the CPU time
+	addTime(&pReport.t_cpu,&usr->t_cpu);	
 
 	//get the system time
 	subTime(&usr->t_started, &shm->clock, &usr->t_sys);
-	//***Another function here to add to OSSReport
+	addTime(&pReport.t_sys, &usr->t_sys);
 
 	//get wait time
 	subTime(&usr->t_cpu, &usr->t_sys, &res);
-	//***Another function here to add to OSSReport
-	
+	addTime(&pReport.t_wait, &res);	
 
 	waitpid(shm->users[u].pid, NULL, 0);
 	bzero(usr, sizeof(struct userPCB)); //Clear all data
@@ -386,7 +397,6 @@ static int scheduleRunUser(){
   	}
 	
 	const int new_state = m.timeslice;
-	//****Wait for professor's response
 	switch (new_state){
 		case sREADY:
 			usr->state = sREADY;
@@ -401,8 +411,6 @@ static int scheduleRunUser(){
 			//update how long user ran on cpu
 			addTime(&usr->t_cpu, &usr->t_burst);
 			
-			//update cpu time in the ossReport
-			//****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
 
 			++logLine;
     			printf("OSS: Receiving that process with PID %u ran for %lu nanoseconds\n", usr->id, usr->t_burst.tv_nsec);
@@ -418,14 +426,13 @@ static int scheduleRunUser(){
     			usr->t_burst.tv_nsec = m.clock.tv_nsec;			
 			addTime(&shm->clock, &usr->t_burst);
 			addTime(&usr->t_cpu, &usr->t_burst);
-			//Update cpu time in the OSSReport
-			//*****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
-
+			
 			//Get blocked time from the message from the child process
 			usr->t_blocked.tv_sec = m.io.tv_sec;
     			usr->t_blocked.tv_nsec = m.io.tv_nsec;
 			
-			//***IMPORTANT: Implement a function here to add blocked time
+			//Update blocked time in the OSS Report
+			addTime(&pReport.t_blocked[usr->priority], &m.io);
 
 			addTime(&usr->t_blocked, &shm->clock); //add clock to wait time
 			
@@ -454,8 +461,6 @@ static int scheduleRunUser(){
 			addTime(&shm->clock, &usr->t_burst);
 			addTime(&usr->t_cpu, &usr->t_burst); //add burst to total cpu time
 			
-			//Update CPU time in the OSSReport
-			//*****IMPORTANT: addTime(&pReport[qREADY].t_cpu,&usr->t_burst);
 			
 			++logLine;
                         printf("OSS: Receiving that process with PID %u ran for %lu nanoseconds\n", usr->id, usr->t_burst.tv_nsec);
@@ -479,7 +484,8 @@ static int scheduleRunUser(){
 	
 }
 static int runChildProcess(){
-	static struct timespec t_idle = {.tv_sec = 0, .tv_nsec = 0};
+	//static struct timespec t_idle = {.tv_sec = 0, .tv_nsec = 0};
+	static struct timespec t_idle;
 	static struct timespec diff_idle;
 	static int flag = 0;
 
@@ -495,7 +501,7 @@ static int runChildProcess(){
 		flag = 0;
 		if(t_idle.tv_sec != 0 && t_idle.tv_nsec != 0){
 			subTime(&t_idle, &shm->clock, &diff_idle);
-			addTime(&cpuIdleTime, &diff_idle);
+			addTime(&pReport.cpuIdleTime, &diff_idle);
 			t_idle.tv_sec = 0;
                 	t_idle.tv_nsec = 0;
 		}
@@ -512,7 +518,7 @@ static int runChildProcess(){
 			flag = 0;
 			if(t_idle.tv_sec != 0 && t_idle.tv_nsec != 0){
 	                        subTime(&t_idle, &shm->clock, &diff_idle);
-        	                addTime(&cpuIdleTime, &diff_idle);
+        	                addTime(&pReport.cpuIdleTime, &diff_idle);
                 	        t_idle.tv_sec = 0;
                         	t_idle.tv_nsec = 0;
                 	}
@@ -522,7 +528,7 @@ static int runChildProcess(){
 	
 	//which means both ready queue are empty at the moment
 	if(flag == 2){
-		if(pq[qBLOCKED].len == 0 && usersStarted >= USERS_MAX){
+		if(pq[qBLOCKED].len == 0 && pReport.usersTerminated >= USERS_MAX){
                         ++logLine;
                         printf("OSS: No blocked process in queue %d at %li:%li\n", qBLOCKED, shm->clock.tv_sec, shm->clock.tv_nsec);
                         ++logLine;
@@ -543,7 +549,7 @@ static void checkLog(){
 	}
 }
 static void ossSchedule(){
-	while(usersTerminated < USERS_MAX){
+	while(pReport.usersTerminated < USERS_MAX){
 		advanceTimer();
 		unblockUsers();
 		if(runChildProcess() == -1) //there isn't any more processes to schedule
@@ -552,14 +558,34 @@ static void ossSchedule(){
 	}
 	
 }
-static void cleanupOSS(){
-	stopUserProcess();
-	exit(EXIT_SUCCESS);	
+static void printReport(){
+	divTime(&pReport.t_cpu, pReport.usersTerminated);
+	divTime(&pReport.t_wait, pReport.usersTerminated);
+	divTime(&pReport.t_sys, pReport.usersTerminated);
+	divTime(&pReport.t_blocked[qHIGH], pReport.c_highprior);
+	divTime(&pReport.t_blocked[qLOW], pReport.c_lowprior);
+	printf("*****************************************************\n");
+	printf("\t\t\t\tSCHEDULING REPORT\n");
+	printf("Processes Statistic:\n");
+	printf("\tNumber of started processes: %d\n", pReport.usersStarted);
+	printf("\tNumber of terminated processes: %d\n", pReport.usersTerminated);
+	printf("\tNumber of IO bound processes: %d\n", pReport.c_highprior);
+	printf("\tNumber of CPU bound processes: %d\n", pReport.c_lowprior);
+	printf("\tCPU idle time: %lu:%lu\n",pReport.cpuIdleTime.tv_sec,pReport.cpuIdleTime.tv_nsec);
+	printf("Average Records:\n");
+	printf("\tAverage CPU utilization time: %lu:%lu\n",pReport.t_cpu.tv_sec,pReport.t_cpu.tv_nsec);
+	printf("\tAverage wait time: %lu:%lu\n",pReport.t_wait.tv_sec,pReport.t_wait.tv_nsec);
+	printf("\tAverage time in the system: %lu:%lu\n",pReport.t_sys.tv_sec,pReport.t_sys.tv_nsec);
+	printf("\tAverage blocked time:\n");
+	printf("\t\tIO Bound Processes: %lu:%lu\n",pReport.t_blocked[qHIGH].tv_sec,pReport.t_blocked[qHIGH].tv_nsec);
+	printf("\t\tCPU Bound Processes: %lu:%lu\n",pReport.t_blocked[qLOW].tv_sec,pReport.t_blocked[qLOW].tv_nsec);
+	printf("*****************************************************\n");
 }
 static void signalHandler(int sig){
-        printf("OSS: Signaled with %d %li:%li\n", sig, shm->clock.tv_sec, shm->clock.tv_nsec);
-        //Print result
-     	cleanupOSS();
+        printf("OSS: Signaled with %d\n", sig);
+     	stopUserProcess();
+	printReport();
+	exit(1);
 }
 int main(int argc, char** argv){
 	prog_name = argv[0];
@@ -584,9 +610,7 @@ int main(int argc, char** argv){
 	initOssReport();	
 	ossSchedule();
 	
-	//Print Resul
-	cleanupOSS();
-			
+	printReport();
 	return EXIT_SUCCESS;	
 
 }
