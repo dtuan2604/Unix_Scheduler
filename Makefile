@@ -1,13 +1,16 @@
 CC=gcc
 CFLAGS=-Wall -Werror -O2 -g
+OBJ= oss.o user.o
+DEPS= oss.c user.c
 
 all: oss user
 
-oss: oss.c oss.h
-	$(CC) $(CFLAGS) oss.c -o oss
+%.o: %.c $(DEPS)
+	$(CC) $(CFLAGS) -c -o $@ $<
+oss: $(OBJ)
+	$(CC) $(CFLAGS) -lm -o $@ $@.o
 
-user: user.c oss.h
-	$(CC) $(CFLAGS) user.c -o user
-
+user: $(OBJ)
+	$(CC) $(CFLAGS) -lm -o $@ $@.o
 clean:
-	rm -rf oss user *.log *.dSYM
+	rm -rf oss user *.log *.o 

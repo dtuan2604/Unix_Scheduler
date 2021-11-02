@@ -565,7 +565,7 @@ static void printReport(){
 	divTime(&pReport.t_blocked[qHIGH], pReport.c_highprior);
 	divTime(&pReport.t_blocked[qLOW], pReport.c_lowprior);
 	printf("*****************************************************\n");
-	printf("\t\t\t\tSCHEDULING REPORT\n");
+	printf("\t\tSCHEDULING REPORT\n");
 	printf("Processes Statistic:\n");
 	printf("\tNumber of started processes: %d\n", pReport.usersStarted);
 	printf("\tNumber of terminated processes: %d\n", pReport.usersTerminated);

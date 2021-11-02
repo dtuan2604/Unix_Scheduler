@@ -1,0 +1,71 @@
+#Project 3: Process Scheduling
+
+
+Name:		Duong Tuan Hoang
+Section: 	CMPSCI 4760 - Operating System
+VCS: 		git
+Date: 		11/01/2021
+
+#Files
+	oss.c - the main program
+	user.c - the application program
+	oss.h, user.h - header file containing any constant needed for this project
+	makefile
+
+## How to run the program
+	make
+	./oss [-h] [-s t] [-l f]
+		-h 	Describe how the project should be run and then, terminate.
+		-s t 	Indicate how many maximum seconds before the system terminates
+		-l f 	Specify a particular name for the log file
+
+## Remove all executables and object files
+	make clean
+
+## Central Data Structure
+	Message Queue: main method to communicate between oss process and user process
+	Timespec: used to stimulate a clock
+	Bit Map: used to keep track of the process ID
+	Shared Memory: contains the information about the clock and process control block
+
+## Description
+	oss.c:
+		Oss.c will stimulate an operating system scheduler. Initially, it allocates shared memory for stimulated 
+		clock and process control block. After a certain number of times, oss will fork a child. OSS will keep
+		forking until it reaches the maximum number of user process (which is defined in oss.h). In the meantime,
+		OSS also create 3 queues for scheduling, high-priority queue, low-priority queue, and blocked queue.
+		High-priority queue mostly contains IO bound processes, low-priority queue contains CPU bound processes. 
+		OSS will keep going in this loop:
+			Check if it's time to fork a new process. If it is, allocate a PCB and then fork a process. If it 
+				is not, advance the timer.
+			Check the blocked queue if there is any process ready to be unblocked. If there are, unblock and 
+				put the process into the back of its respective queue. 
+			Check high priority queue if there is any process. If it is, dispatch the first process apprearing 
+				in the queue, wait for the process finish its job and record the information it returns. 
+				After that, OSS will check if this process is either terminated, or blocked, or ready, then 
+				OSS will put them in its respective queue. 
+			If the high-priority queue is empty, then OSS switches to low-priority queue and do the same thing as 
+				it does with high-priority queue.
+			Check the log line if it exceeds the maximum log lines. If it is, OSS will then send a interrupt 
+				signal to terminate the program. 
+		OSS will exit this loop if one of the following condition meets: 
+			OSS already fork maximum number of user processes.
+			OSS receives an interrupt signal.
+			OSS exceeds the maximum number of log line.
+			OSS exceeds the time it is allowed to be executed.
+		After terminating, the program will print a result which reports CPU idle time, average wait time, average time 
+		in the system, average cpu utilization and average time a process waited in a blocked queue for each of the 
+		different types of processes. 
+	user.c:
+		User.c take in one argument [IObound] to determine if it should behave as an IO bound process or CPU bound
+		process. If it would terminate, it would of course use some random amount of its timeslice before terminating. 
+		It should indicate to oss that it has decided to terminate and also how much of its timeslice it used, so that 
+		oss can increment the clock by the appropriate amount. Once it has decided that it will not terminate, then we 
+		have to determine if it will use its entire timeslice or if it will get blocked on an event. On the other hand,
+		i/o-bound processes should more likely than not get interrupted before finishing their time slices. If a process 
+		determines that it would use up its timeslice, this information should be conveyed to oss when it cedes control 
+		to oss. Otherwise, the process would have to indicate to oss that it should be blocked, as well as the amount of 
+		its assigned quantum that it used up before being blocked. That process should then be put in a blocked queue 
+		waiting for an event that will happen.
+
+		
