@@ -47,6 +47,10 @@ static void helpMenu(){
 	printf("try to put a process in ready queu, dispatch it, put it back or blocked it.\n");
 	printf("Additionally, this program also stimulate a clock so that we could check\n");
 	printf("our scheduler is working correctly or not.\n");
+	printf("./oss [-h] [-s t] [-l f]\n");
+        printf("       -h      Describe how the project should be run and then, terminate.\n");
+        printf("       -s t    Indicate how many maximum seconds before the system terminates.\n");
+        printf("       -l f    Specify a particular name for the log file.\n");
 }
 
 static int parseOpt(int argc,char** argv){

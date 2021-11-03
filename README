@@ -46,6 +46,7 @@ Date: 		11/01/2021
 				OSS will put them in its respective queue. 
 			If the high-priority queue is empty, then OSS switches to low-priority queue and do the same thing as 
 				it does with high-priority queue.
+			If both ready queues are empty, start record the idle time of cpu.
 			Check the log line if it exceeds the maximum log lines. If it is, OSS will then send a interrupt 
 				signal to terminate the program. 
 		OSS will exit this loop if one of the following condition meets: 
