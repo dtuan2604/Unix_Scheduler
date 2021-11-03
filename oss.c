@@ -497,7 +497,6 @@ static int runChildProcess(){
 		if(flag == 0){
 			++logLine;
 			printf("OSS: No ready process in queue %d at %li:%li\n", qHIGH, shm->clock.tv_sec, shm->clock.tv_nsec);
-			t_idle = shm->clock;
 			flag = 1;
 		}
        	}else{
@@ -539,6 +538,8 @@ static int runChildProcess(){
                         printf("OSS: The operating system will terminate right away\n");
                         return -1; //return -1 to let OSS know there isn't any more process to schedule
 		}else{
+			if(t_idle.tv_sec == 0 && t_idle.tv_nsec == 0)
+				t_idle = shm->clock;
 			return 0;
 		}
 	}
